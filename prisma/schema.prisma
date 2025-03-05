@@ -1,0 +1,52 @@
+// This is your Prisma schema file
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Language {
+  id          Int           @id @default(autoincrement())
+  name        String
+  code        String        @unique
+  fromPairs   LanguagePair[] @relation("FromLanguage")
+  toPairs     LanguagePair[] @relation("ToLanguage")
+}
+
+model LanguagePair {
+  id                 Int                 @id @default(autoincrement())
+  fromLanguage       Language            @relation("FromLanguage", fields: [fromLanguageId], references: [id])
+  fromLanguageId     Int
+  toLanguage         Language            @relation("ToLanguage", fields: [toLanguageId], references: [id])
+  toLanguageId       Int
+  concepts           GrammaticalConcept[]
+}
+
+model GrammaticalConcept {
+  id            Int       @id @default(autoincrement())
+  name          String
+  description   String
+  languagePair  LanguagePair @relation(fields: [languagePairId], references: [id])
+  languagePairId Int
+  sentences     Sentence[]
+}
+
+model Sentence {
+  id                     Int               @id @default(autoincrement())
+  canonicalFrom         String
+  canonicalTo           String
+  concept              GrammaticalConcept @relation(fields: [conceptId], references: [id])
+  conceptId            Int
+  acceptableTranslations AcceptableTranslation[]
+}
+
+model AcceptableTranslation {
+  id          Int      @id @default(autoincrement())
+  sentence    Sentence @relation(fields: [sentenceId], references: [id])
+  sentenceId  Int
+  fromToText  String?  // Translation from source to target language
+  toFromText  String?  // Translation from target to source language
+} 
