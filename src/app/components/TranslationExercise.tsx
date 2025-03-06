@@ -6,6 +6,7 @@ interface TranslationFeedback {
   overallScore: number;
   conceptScore: number;
   explanation?: string;
+  acceptableTranslations?: string[];
 }
 
 interface Sentence {
@@ -163,6 +164,16 @@ export default function TranslationExercise({ conceptId }: TranslationExercisePr
             </p>
             {feedback.explanation && (
               <p className="text-sm text-gray-600 mt-2">{feedback.explanation}</p>
+            )}
+            {feedback.overallScore < 10 && feedback.acceptableTranslations && feedback.acceptableTranslations.length > 0 && (
+              <div className="mt-4 p-4 bg-gray-50 rounded-md">
+                <p className="text-sm font-medium text-gray-700 mb-2">Acceptable translations:</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  {feedback.acceptableTranslations.map((translation, index) => (
+                    <li key={index} className="text-sm text-gray-600">{translation}</li>
+                  ))}
+                </ul>
+              </div>
             )}
             {feedback.overallScore === 10 && (
               <div className="mt-4 flex justify-center">

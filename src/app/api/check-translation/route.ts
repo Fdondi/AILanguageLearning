@@ -40,6 +40,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Collect all acceptable translations
+    const allAcceptableTranslations = [
+      sentence.canonicalTo,
+      ...sentence.acceptableTranslations
+        .map((t: AcceptableTranslation) => t.fromToText)
+        .filter((t: string | null): t is string => t !== null)
+    ];
+
     // Check for exact matches first
     const isExactMatch = 
       translation.toLowerCase() === sentence.canonicalTo.toLowerCase() ||
@@ -52,10 +60,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         overallScore: 10,
         conceptScore: 10,
-        explanation: "Perfect match! Your translation exactly matches one of the accepted translations."
+        explanation: "Perfect match! Your translation exactly matches one of the accepted translations.",
+        acceptableTranslations: allAcceptableTranslations
       });
     }
 
+    // If not an exact match, return with feedback and acceptable translations
+    return NextResponse.json({
+      overallScore: 0,
+      conceptScore: 0,
+      explanation: "Your translation doesn't match any of the accepted translations.",
+      acceptableTranslations: allAcceptableTranslations
+    });
+
+    // Note: The OpenAI evaluation code below is commented out as it's not needed for now
+    /*
     // If not an exact match, use OpenAI to evaluate
     const prompt = `
       You are a language learning assistant evaluating a translation.
@@ -92,11 +111,21 @@ export async function POST(request: NextRequest) {
     }
 
     const evaluation = JSON.parse(response);
-    return NextResponse.json(evaluation);
+    return NextResponse.json({
+      ...evaluation,
+      acceptableTranslations: allAcceptableTranslations
+    });
+    */
   } catch (error) {
     console.error('Error checking translation:', error);
     return NextResponse.json(
-      { error: 'Failed to check translation' },
+      { 
+        error: 'Failed to check translation',
+        acceptableTranslations: [],
+        overallScore: 0,
+        conceptScore: 0,
+        explanation: "There was an error checking your translation."
+      },
       { status: 500 }
     );
   }
