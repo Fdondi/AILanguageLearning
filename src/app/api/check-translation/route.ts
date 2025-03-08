@@ -12,6 +12,69 @@ interface AcceptableTranslation {
   toFromText: string | null;
 }
 
+interface DiffResult {
+  text: string;
+  diffs: Array<{
+    start: number;
+    end: number;
+    type: 'missing' | 'extra' | 'wrong';
+  }>;
+}
+
+function findStringDifferences(str1: string, str2: string): DiffResult {
+  const s1 = str1.toLowerCase();
+  const s2 = str2.toLowerCase();
+  const diffs: Array<{ start: number; end: number; type: 'missing' | 'extra' | 'wrong' }> = [];
+  
+  let i = 0;
+  let j = 0;
+  
+  while (i < s1.length || j < s2.length) {
+    if (i >= s1.length) {
+      // Extra characters in str2
+      diffs.push({ start: j, end: s2.length, type: 'extra' });
+      break;
+    }
+    if (j >= s2.length) {
+      // Missing characters from str2
+      diffs.push({ start: i, end: s1.length, type: 'missing' });
+      break;
+    }
+    
+    if (s1[i] !== s2[j]) {
+      // Find next matching character
+      let nextMatch = -1;
+      for (let k = 1; k < 3; k++) { // Look ahead up to 3 characters
+        if (s1[i + k] === s2[j] || s1[i] === s2[j + k]) {
+          nextMatch = k;
+          break;
+        }
+      }
+      
+      if (nextMatch === -1) {
+        // Characters are different
+        diffs.push({ start: j, end: j + 1, type: 'wrong' });
+        i++;
+        j++;
+      } else {
+        // Missing or extra character
+        if (s1[i + nextMatch] === s2[j]) {
+          diffs.push({ start: j, end: j + nextMatch, type: 'missing' });
+          i += nextMatch;
+        } else {
+          diffs.push({ start: j, end: j + nextMatch, type: 'extra' });
+          j += nextMatch;
+        }
+      }
+    } else {
+      i++;
+      j++;
+    }
+  }
+  
+  return { text: str2, diffs };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -61,20 +124,21 @@ export async function POST(request: NextRequest) {
         overallScore: 10,
         conceptScore: 10,
         explanation: "Perfect match! Your translation exactly matches one of the accepted translations.",
-        acceptableTranslations: allAcceptableTranslations
+        acceptableTranslations: allAcceptableTranslations,
+        diffs: null
       });
     }
 
-    // If not an exact match, return with feedback and acceptable translations
-    return NextResponse.json({
-      overallScore: 0,
-      conceptScore: 0,
-      explanation: "Your translation doesn't match any of the accepted translations.",
-      acceptableTranslations: allAcceptableTranslations
-    });
+    // If not an exact match, compute diffs for each acceptable translation
+    const translationsWithDiffs = allAcceptableTranslations.map(acceptableTranslation => ({
+      translation: acceptableTranslation,
+      diffs: findStringDifferences(acceptableTranslation, translation)
+    }));
 
-    // Note: The OpenAI evaluation code below is commented out as it's not needed for now
-    /*
+    // Sort by number of differences to find the closest match
+    translationsWithDiffs.sort((a, b) => a.diffs.diffs.length - b.diffs.diffs.length);
+    const closestMatch = translationsWithDiffs[0]?.translation || null;
+
     // If not an exact match, use OpenAI to evaluate
     const prompt = `
       You are a language learning assistant evaluating a translation.
@@ -88,19 +152,20 @@ export async function POST(request: NextRequest) {
       Please evaluate the translation and provide:
       1. Overall translation score (1-10)
       2. Score specifically for the grammatical concept being tested (1-10)
-      3. Brief explanation of the scores
+      3. List of specific topics or concepts that the user seems to be missing or misunderstanding
       
       Format your response as a JSON object with these exact keys:
       {
         "overallScore": number,
         "conceptScore": number,
+        "missingTopics": ["string"],
         "explanation": "string"
       }
     `;
 
     const completion = await openai.chat.completions.create({
       messages: [{ role: "user", content: prompt }],
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o-mini", // Using the smaller model
       temperature: 0.3,
       response_format: { type: "json_object" },
     });
@@ -113,9 +178,10 @@ export async function POST(request: NextRequest) {
     const evaluation = JSON.parse(response);
     return NextResponse.json({
       ...evaluation,
-      acceptableTranslations: allAcceptableTranslations
+      acceptableTranslations: allAcceptableTranslations,
+      closestMatch,
+      translationsWithDiffs: translationsWithDiffs
     });
-    */
   } catch (error) {
     console.error('Error checking translation:', error);
     return NextResponse.json(
@@ -124,7 +190,8 @@ export async function POST(request: NextRequest) {
         acceptableTranslations: [],
         overallScore: 0,
         conceptScore: 0,
-        explanation: "There was an error checking your translation."
+        explanation: "There was an error checking your translation.",
+        diffs: null
       },
       { status: 500 }
     );

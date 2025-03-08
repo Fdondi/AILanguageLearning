@@ -6,7 +6,20 @@ interface TranslationFeedback {
   overallScore: number;
   conceptScore: number;
   explanation?: string;
+  missingTopics?: string[];
   acceptableTranslations?: string[];
+  closestMatch?: string | null;
+  translationsWithDiffs?: Array<{
+    translation: string;
+    diffs: {
+      text: string;
+      diffs: Array<{
+        start: number;
+        end: number;
+        type: 'missing' | 'extra' | 'wrong';
+      }>;
+    };
+  }>;
 }
 
 interface Sentence {
@@ -21,6 +34,72 @@ interface Sentence {
 
 interface TranslationExerciseProps {
   conceptId: number | null;
+}
+
+interface DiffResult {
+  text: string;
+  diffs: Array<{
+    start: number;
+    end: number;
+    type: 'missing' | 'extra' | 'wrong';
+  }>;
+}
+
+function HighlightedText({ text, diffs, isUserTranslation = false }: { 
+  text: string, 
+  diffs: DiffResult,
+  isUserTranslation?: boolean 
+}) {
+  if (!diffs) return <span>{text}</span>;
+
+  const parts: JSX.Element[] = [];
+  let lastIndex = 0;
+
+  // Sort diffs by start position
+  const sortedDiffs = [...diffs.diffs].sort((a, b) => a.start - b.start);
+
+  sortedDiffs.forEach((diff, index) => {
+    // Add text before the difference
+    if (diff.start > lastIndex) {
+      parts.push(
+        <span key={`text-${index}`}>
+          {text.substring(lastIndex, diff.start)}
+        </span>
+      );
+    }
+
+    // Add the highlighted difference
+    const highlightClass = isUserTranslation
+      ? (diff.type === 'wrong' ? 'bg-red-200' :
+         diff.type === 'missing' ? 'bg-yellow-200' :
+         'bg-orange-200') // extra
+      : (diff.type === 'wrong' ? 'bg-green-200' :
+         diff.type === 'missing' ? 'bg-blue-200' :
+         'bg-purple-200'); // Show different colors for reference translations
+
+    parts.push(
+      <span 
+        key={`diff-${index}`} 
+        className={`${highlightClass} rounded px-0.5`} 
+        title={isUserTranslation ? diff.type : `This ${diff.type === 'wrong' ? 'differs' : diff.type === 'missing' ? 'is missing' : 'is extra'} in your translation`}
+      >
+        {text.substring(diff.start, diff.end)}
+      </span>
+    );
+
+    lastIndex = diff.end;
+  });
+
+  // Add any remaining text
+  if (lastIndex < text.length) {
+    parts.push(
+      <span key="text-end">
+        {text.substring(lastIndex)}
+      </span>
+    );
+  }
+
+  return <>{parts}</>;
 }
 
 export default function TranslationExercise({ conceptId }: TranslationExerciseProps) {
@@ -165,14 +244,42 @@ export default function TranslationExercise({ conceptId }: TranslationExercisePr
             {feedback.explanation && (
               <p className="text-sm text-gray-600 mt-2">{feedback.explanation}</p>
             )}
-            {feedback.overallScore < 10 && feedback.acceptableTranslations && feedback.acceptableTranslations.length > 0 && (
-              <div className="mt-4 p-4 bg-gray-50 rounded-md">
-                <p className="text-sm font-medium text-gray-700 mb-2">Acceptable translations:</p>
+            {feedback.missingTopics && feedback.missingTopics.length > 0 && (
+              <div className="mt-4 p-4 bg-yellow-50 rounded-md">
+                <h5 className="text-sm font-medium text-yellow-800 mb-2">Topics to Review:</h5>
                 <ul className="list-disc pl-5 space-y-1">
-                  {feedback.acceptableTranslations.map((translation, index) => (
-                    <li key={index} className="text-sm text-gray-600">{translation}</li>
+                  {feedback.missingTopics.map((topic, index) => (
+                    <li key={index} className="text-sm text-yellow-700">{topic}</li>
                   ))}
                 </ul>
+              </div>
+            )}
+            {feedback.overallScore < 10 && feedback.translationsWithDiffs && feedback.translationsWithDiffs.length > 0 && (
+              <div className="mt-4 p-4 bg-gray-50 rounded-md">
+                <p className="text-sm font-medium text-gray-700 mb-2">Your translation:</p>
+                <p className="text-sm text-gray-600 mb-4">{userTranslation}</p>
+                <p className="text-sm font-medium text-gray-700 mb-2">Acceptable translations:</p>
+                <ul className="list-disc pl-5 space-y-2">
+                  {feedback.translationsWithDiffs.map((item, index) => (
+                    <li key={index} className="text-sm text-gray-600">
+                      <HighlightedText 
+                        text={item.translation} 
+                        diffs={item.diffs} 
+                        isUserTranslation={false}
+                      />
+                      {item.translation === feedback.closestMatch && (
+                        <span className="ml-2 text-xs text-gray-500">(closest match)</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-4 text-xs text-gray-500 space-y-1">
+                  <div className="space-x-2">
+                    <span className="inline-block px-2 bg-green-200 rounded">green: different character</span>
+                    <span className="inline-block px-2 bg-blue-200 rounded">blue: missing in your translation</span>
+                    <span className="inline-block px-2 bg-purple-200 rounded">purple: extra in your translation</span>
+                  </div>
+                </div>
               </div>
             )}
             {feedback.overallScore === 10 && (

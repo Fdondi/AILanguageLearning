@@ -60,7 +60,7 @@ export default function LanguagePairSelector({ onSelect }: LanguagePairSelectorP
 
   return (
     <div className="w-full max-w-md mx-auto">
-      <label className="block text-sm font-medium text-gray-700 mb-2">
+      <label style={{ color: '#22c55e' }} className="block text-sm font-medium mb-2">
         Select Language Pair
       </label>
       <select
